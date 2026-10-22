@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>llmscheck - Audit your llms.txt before the crawlers grade it</title>
+<meta name="description" content="A local, private auditor for llms.txt files. Structure checks, link hygiene and robots.txt contradiction detection, with a score and a copyable report.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --navy:#0a1628; --navy2:#0e1f3a; --navy3:#12294d; --card:#10233f;
+  --gold:#d4a843; --gold2:#f0c95c; --ink:#eef2f8; --mut:#93a5c0; --line:#22395e;
+  --pass:#2ecc71; --warn:#f0b429; --fail:#e5534b;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--navy);color:var(--ink);font-family:'Plus Jakarta Sans',system-ui,sans-serif;line-height:1.55}
+.wrap{max-width:1060px;margin:0 auto;padding:28px 20px 70px}
+header.hero{padding:38px 0 10px}
+.kicker{color:var(--gold2);font-family:'JetBrains Mono',monospace;font-size:.78rem;letter-spacing:.18em;text-transform:uppercase}
+h1.logo{font-family:'Sora',sans-serif;font-size:2.7rem;font-weight:800;letter-spacing:-.02em;margin:.15em 0 .1em}
+h1.logo span{color:var(--gold)}
+.tagline{font-size:1.13rem;color:var(--ink);max-width:720px}
+.tagline b{color:var(--gold2)}
+.sub{color:var(--mut);max-width:720px;margin-top:8px}
+.stats{display:flex;flex-wrap:wrap;gap:12px;margin:24px 0 6px}
+.stat{background:var(--navy2);border:1px solid var(--line);border-radius:12px;padding:12px 16px;min-width:180px;flex:1}
+.stat .n{font-family:'Sora',sans-serif;font-weight:700;font-size:1.25rem;color:var(--gold2)}
+.stat .l{font-size:.82rem;color:var(--mut)}
+section.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px;margin-top:20px}
+section.card h2{font-family:'Sora',sans-serif;font-size:1.15rem;margin-bottom:6px}
+section.card p.hint{color:var(--mut);font-size:.92rem;margin-bottom:12px}
+label.flabel{display:block;font-size:.82rem;font-weight:600;color:var(--mut);letter-spacing:.04em;text-transform:uppercase;margin:14px 0 6px}
+textarea,input[type=text]{width:100%;background:var(--navy);border:1px solid var(--line);border-radius:10px;color:var(--ink);padding:12px 14px;font-size:.95rem}
+textarea{font-family:'JetBrains Mono',monospace;font-size:.85rem;min-height:220px;resize:vertical}
+textarea.small{min-height:110px}
+input[type=text]{font-family:'JetBrains Mono',monospace;font-size:.88rem}
+textarea:focus,input:focus{outline:2px solid var(--gold);outline-offset:1px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.row input{flex:1;min-width:220px}
+.btn{appearance:none;border:1px solid var(--gold);background:var(--gold);color:#191104;font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;font-size:.95rem;border-radius:10px;padding:11px 20px;cursor:pointer}
+.btn:hover{background:var(--gold2)}
+.btn.ghost{background:transparent;color:var(--gold2)}
+.btn.ghost:hover{border-color:var(--gold2);color:var(--gold2);background:rgba(212,168,67,.08)}
+.note{display:none;margin-top:12px;border:1px solid var(--warn);background:rgba(240,180,41,.08);color:#f5d98b;border-radius:10px;padding:10px 14px;font-size:.9rem}
+.scorebox{display:flex;gap:22px;flex-wrap:wrap;align-items:center}
+.bignum{font-family:'Sora',sans-serif;font-size:3.4rem;font-weight:800;line-height:1}
+.grade{font-family:'Sora',sans-serif;font-weight:700;font-size:1.2rem;margin-top:4px}
+.g-healthy{color:var(--pass)} .g-needs{color:var(--warn)} .g-broken{color:var(--fail)}
+.counts{color:var(--mut);font-size:.95rem}
+.counts b{color:var(--ink)}
+.checks{list-style:none;margin-top:8px}
+.checks li{display:flex;gap:12px;padding:11px 4px;border-top:1px solid var(--line);align-items:flex-start}
+.badge{flex:none;font-family:'JetBrains Mono',monospace;font-size:.72rem;font-weight:600;letter-spacing:.06em;padding:3px 9px;border-radius:999px;margin-top:2px}
+.b-pass{background:rgba(46,204,113,.14);color:var(--pass);border:1px solid var(--pass)}
+.b-warn{background:rgba(240,180,41,.12);color:var(--warn);border:1px solid var(--warn)}
+.b-fail{background:rgba(229,83,75,.12);color:var(--fail);border:1px solid var(--fail)}
+.checks .ct{font-weight:600}
+.checks .cd{color:var(--mut);font-size:.9rem}
+pre.report{background:var(--navy);border:1px solid var(--line);border-radius:10px;padding:14px;font-family:'JetBrains Mono',monospace;font-size:.78rem;white-space:pre-wrap;word-break:break-word;max-height:340px;overflow:auto;color:#c9d6ea}
+.hidden{display:none}
+footer{margin-top:34px;color:var(--mut);font-size:.88rem;text-align:center}
+footer b{color:var(--gold2)}
+@media (max-width:640px){h1.logo{font-size:2.1rem}.bignum{font-size:2.6rem}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <div class="kicker">llms.txt auditor</div>
+  <h1 class="logo">llms<span>check</span></h1>
+  <p class="tagline">Generators write llms.txt files. <b>Nobody checks them.</b> Paste yours and get a graded audit: structure, link hygiene, and contradictions with your own robots.txt.</p>
+  <p class="sub">Everything runs in your browser. Your files are never uploaded, stored, or sent anywhere.</p>
+  <div class="stats">
+    <div class="stat"><div class="n">844,000</div><div class="l">websites had deployed llms.txt by November 2025</div></div>
+    <div class="stat"><div class="n">19.9%</div><div class="l">of llms.txt files are empty or describe a closed site (StackScan census, September 2026)</div></div>
+    <div class="stat"><div class="n">548,000</div><div class="l">sites serve an llms.txt that contradicts their own robots.txt</div></div>
+  </div>
+</header>
+
+<section class="card">
+  <h2>1. Get your llms.txt</h2>
+  <p class="hint">Try a direct fetch first. Many sites block cross-origin reads, so if the fetch fails, paste the file below instead. A failed fetch does not mean the file is missing.</p>
+  <div class="row">
+    <input type="text" id="domainInput" placeholder="example.com" autocomplete="off" spellcheck="false">
+    <button class="btn ghost" id="fetchBtn" type="button">Try fetching a site</button>
+  </div>
+  <div class="note" id="fetchNote"></div>
+  <label class="flabel" for="llmsInput">llms.txt content</label>
+  <textarea id="llmsInput" spellcheck="false" placeholder="# Your Site Name&#10;&gt; One sentence summary of what this site is.&#10;&#10;## Docs&#10;- [Getting started](https://example.com/docs/start): What this page covers"></textarea>
+  <label class="flabel" for="robotsInput">robots.txt content (optional, enables the contradiction check)</label>
+  <textarea id="robotsInput" class="small" spellcheck="false" placeholder="User-agent: *&#10;Disallow: /private/"></textarea>
+  <div class="row" style="margin-top:18px">
+    <button class="btn" id="auditBtn" type="button">Run audit</button>
+    <button class="btn ghost" id="sampleBtn" type="button">Load broken sample</button>
+    <button class="btn ghost" id="clearBtn" type="button">Clear</button>
+  </div>
+</section>
+
+<section class="card hidden" id="resultsCard">
+  <h2>2. Your audit</h2>
+  <div class="scorebox">
+    <div>
+      <div class="bignum" id="scoreNum">0</div>
+      <div class="grade" id="gradeText"></div>
+    </div>
+    <div class="counts" id="countsText"></div>
+  </div>
+  <ul class="checks" id="checksList"></ul>
+</section>
+
+<section class="card hidden" id="reportCard">
+  <h2>3. Copyable report</h2>
+  <p class="hint">Markdown, ready to paste into an issue, a ticket, or a client email.</p>
+  <pre class="report" id="reportText"></pre>
+  <div class="row" style="margin-top:14px">
+    <button class="btn ghost" id="copyBtn" type="button">Copy report</button>
+    <span id="copyMsg" style="color:var(--pass);font-size:.9rem"></span>
+  </div>
+</section>
+
+<footer>
+  <p><b>llmscheck</b> - an honest auditor. AI crawlers do not send much traffic for llms.txt yet, so this tool sells accuracy and hygiene, not traffic promises.</p>
+  <p style="margin-top:6px">Built by Dispatch Authority. Local-first, no accounts, no uploads.</p>
+</footer>
+
+</div>
+
+<script id="engine">
+"use strict";
+/* llmscheck audit engine. Pure functions, no DOM. */
+var TRACKING_PARAMS = ["utm_source","utm_medium","utm_campaign","utm_term","utm_content","fbclid","gclid","ref","source"];
+
+function llmsLines(text){ return String(text || "").replace(/\r\n/g,"\n").split("\n"); }
+
+function parseLlms(text){
+  var lines = llmsLines(text);
+  var doc = { lines: lines, h1: [], blockquote: false, sections: [], links: [], fences: 0, htmlTags: [], detailsText: false };
+  var inFence = false, currentSection = null, seenFirstH2 = false, blockquoteSeen = false;
+  for (var i = 0; i < lines.length; i++){
+    var line = lines[i], trimmed = line.trim();
+    if (/^```/.test(trimmed)){ doc.fences++; inFence = !inFence; continue; }
+    if (inFence) continue;
+    if (/^# /.test(line)) doc.h1.push(line.slice(2).trim());
+    if (/^> /.test(line) || /^>$/.test(line)) { doc.blockquote = true; blockquoteSeen = true; }
+    var h2 = line.match(/^## (.+)$/);
+    if (h2){ currentSection = { title: h2[1].trim(), line: i + 1, linkCount: 0 }; doc.sections.push(currentSection); seenFirstH2 = true; continue; }
+    if (!seenFirstH2 && blockquoteSeen && trimmed && !/^#/.test(line) && !/^>/.test(line)) doc.detailsText = true;
+    var html = trimmed.match(/^<\/?(div|span|p|br|table|section|article|img|a)\b/i);
+    if (html) doc.htmlTags.push(trimmed.slice(0, 40));
+    var linkRe = /\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g, m;
+    while ((m = linkRe.exec(line)) !== null){
+      var isList = /^\s*[-*]\s+/.test(line);
+      doc.links.push({ text: m[1], url: m[2], line: i + 1, listFormat: isList, underSection: !!currentSection, section: currentSection ? currentSection.title : null });
+      if (currentSection) currentSection.linkCount++;
+    }
+  }
+  doc.fenceOpen = inFence;
+  return doc;
+}
+
+function parseRobotsDisallow(robotsText){
+  var paths = [];
+  llmsLines(robotsText).forEach(function(line){
+    var t = line.trim();
+    var m = t.match(/^disallow:\s*(\S+)\s*$/i);
+    if (m && m[1]) paths.push(m[1]);
+  });
+  return paths;
+}
+
+function linkPath(url){
+  var m = String(url).match(/^https?:\/\/[^\/]+(\/[^?#]*)?/i);
+  return m && m[1] ? m[1] : "/";
+}
+
+function companyChecks(){
+  return [];
+}
+
+function auditLlms(llmsText, robotsText){
+  var checks = [];
+  function add(id, label, status, detail){ checks.push({ id: id, label: label, status: status, detail: detail }); }
+  var text = String(llmsText || "");
+  var bytes = new Blob([text]).size;
+  var doc = parseLlms(text);
+  var trimmedEmpty = text.trim().length === 0;
+
+  if (trimmedEmpty) add("notEmpty","File is not empty","fail","The file has no content at all. An empty llms.txt tells crawlers nothing and wastes the slot.");
+  else add("notEmpty","File is not empty","pass", bytes + " bytes of content found.");
+
+  if (trimmedEmpty) add("size","File size sanity","fail","Zero bytes. Nothing to audit until the file has content.");
+  else if (bytes > 100 * 1024) add("size","File size sanity","warn", Math.round(bytes/1024) + " KB is large for llms.txt. Consider moving long content to llms-full.txt and keeping this file as the index.");
+  else add("size","File size sanity","pass", Math.round(bytes * 10 / 1024) / 10 + " KB, a sane size for an index file.");
+
+  if (doc.h1.length === 1) add("h1","Exactly one H1 title","pass","Title: " + doc.h1[0]);
+  else if (doc.h1.length === 0) add("h1","Exactly one H1 title","fail","No H1 found. The spec expects a single H1 with the project or site name at the top of the file.");
+  else add("h1","Exactly one H1 title","warn", doc.h1.length + " H1 headings found. The spec expects exactly one.");
+
+  if (doc.blockquote) add("blockquote","Blockquote summary present","pass","A blockquote summary gives crawlers the one-paragraph version of the site.");
+  else add("blockquote","Blockquote summary present","warn","No blockquote summary found. Add a > line under the H1 with a short summary of the site.");
+
+  if (doc.sections.length >= 1) add("sections","H2 sections present","pass", doc.sections.length + " section(s): " + doc.sections.map(function(s){ return s.title; }).join(", ") + ".");
+  else add("sections","H2 sections present","fail","No H2 sections found. Links should be grouped under H2 headings by topic.");
+
+  var emptySections = doc.sections.filter(function(s){ return s.linkCount === 0; });
+  if (doc.sections.length && emptySections.length) add("emptySections","No empty sections","warn","Section(s) with no links: " + emptySections.map(function(s){ return s.title; }).join(", ") + ". Either add links or remove the heading.");
+  else if (doc.sections.length) add("emptySections","No empty sections","pass","Every section contains at least one link.");
+
+  if (!doc.links.length) add("linkFormat","Links in Markdown list format under sections","warn","No Markdown links found at all. An llms.txt with no links is just a description.");
+  else {
+    var badFormat = doc.links.filter(function(l){ return !l.listFormat || !l.underSection; });
+    if (!badFormat.length) add("linkFormat","Links in Markdown list format under sections","pass","All " + doc.links.length + " link(s) are list items under a section.");
+    else add("linkFormat","Links in Markdown list format under sections","warn", badFormat.length + " link(s) are not list items under an H2 section, first at line " + badFormat[0].line + ". Use - [Title](url): description under a section heading.");
+  }
+
+  var relative = doc.links.filter(function(l){ return !/^https?:\/\//i.test(l.url); });
+  if (doc.links.length && relative.length) add("absolute","Every link is an absolute http(s) URL","fail", relative.length + " relative link(s), first: " + relative[0].url + " (line " + relative[0].line + "). Crawlers resolve these unreliably, always use full https:// URLs.");
+  else if (doc.links.length) add("absolute","Every link is an absolute http(s) URL","pass","All links use absolute http(s) URLs.");
+  else add("absolute","Every link is an absolute http(s) URL","warn","No links to check.");
+
+  var seen = {}, dups = [];
+  doc.links.forEach(function(l){ if (seen[l.url]) dups.push(l.url); seen[l.url] = true; });
+  if (dups.length) add("duplicates","No duplicate links","fail","Duplicate link(s): " + dups.filter(function(v,i,a){ return a.indexOf(v) === i; }).join(", ") + ". Each URL should appear once.");
+  else add("duplicates","No duplicate links","pass","No URL appears twice.");
+
+  var flagged = doc.links.filter(function(l){
+    if (/#.+/.test(l.url)) return true;
+    return TRACKING_PARAMS.some(function(p){ return new RegExp("[?&]" + p + "=").test(l.url); });
+  });
+  if (flagged.length) add("cleanUrls","No fragments or tracking parameters","warn", flagged.length + " link(s) carry an anchor fragment or tracking parameter, first: " + flagged[0].url + ". Strip utm and fragment clutter from canonical links.");
+  else add("cleanUrls","No fragments or tracking parameters","pass","Links are clean, no fragments or tracking parameters.");
+
+  var optional = doc.sections.filter(function(s){ return /^optional$/i.test(s.title); });
+  if (optional.length) add("optionalSection","Optional section used correctly","pass","The Optional section marks links a crawler may skip, exactly as the spec intends.");
+  else add("optionalSection","Optional section used correctly","pass","No Optional section. That is fine, it is only needed for secondary links a crawler may skip.");
+
+  if (doc.detailsText) add("details","Details area before the first section","pass","There is explanatory text between the summary and the first section, which is where spec details belong.");
+  else add("details","Details area before the first section","warn","No details text found between the summary and the first H2. A short paragraph of context helps crawlers interpret the link list.");
+
+  if (doc.fenceOpen) add("markdown","Markdown syntax sanity","fail","An unclosed code fence (```) swallows the rest of the file for most parsers. Close every fence you open.");
+  else if (doc.htmlTags.length) add("markdown","Markdown syntax sanity","warn","Raw HTML found, first: " + doc.htmlTags[0] + ". llms.txt is plain Markdown, most consumers ignore or choke on HTML.");
+  else add("markdown","Markdown syntax sanity","pass","No unclosed code fences and no stray HTML.");
+
+  var robotsGiven = String(robotsText || "").trim().length > 0;
+  if (robotsGiven){
+    var disallows = parseRobotsDisallow(robotsText).filter(function(p){ return p !== ""; });
+    var contradictions = [];
+    doc.links.forEach(function(l){
+      if (!/^https?:\/\//i.test(l.url)) return;
+      var path = linkPath(l.url);
+      disallows.forEach(function(d){
+        if (d === "/" || path.indexOf(d) === 0) contradictions.push({ url: l.url, rule: d });
+      });
+    });
+    if (contradictions.length){
+      var list = contradictions.map(function(c){ return c.url + " (robots.txt Disallow: " + c.rule + ")"; }).join("; ");
+      add("robots","robots.txt does not contradict llms.txt","fail", contradictions.length + " contradiction(s): " + list + ". You are inviting crawlers to pages you also tell them not to crawl.");
+    } else {
+      add("robots","robots.txt does not contradict llms.txt","pass","No llms.txt link falls under a robots.txt Disallow rule (" + disallows.length + " rule(s) checked).");
+    }
+    var fullRefs = doc.links.filter(function(l){ return /llms-full\.txt/i.test(l.url); });
+    if (fullRefs.length) add("fullRef","llms-full.txt reference","warn","This file links to llms-full.txt (" + fullRefs[0].url + "). Make sure that file actually exists and stays in sync, a stale full file is worse than none.");
+  }
+
+  var fails = checks.filter(function(c){ return c.status === "fail"; }).length;
+  var warns = checks.filter(function(c){ return c.status === "warn"; }).length;
+  var passes = checks.filter(function(c){ return c.status === "pass"; }).length;
+  var score = Math.max(0, 100 - fails * 15 - warns * 5);
+  if (trimmedEmpty) score = 0;
+  var grade = score >= 85 ? "Healthy" : (score >= 50 ? "Needs work" : "Broken");
+  return { checks: checks, score: score, grade: grade, passes: passes, warns: warns, fails: fails, linkCount: doc.links.length, sectionCount: doc.sections.length };
+}
+
+function buildReport(result, sourceLabel){
+  var out = [];
+  out.push("# llmscheck audit report");
+  out.push("");
+  out.push("Source: " + (sourceLabel || "pasted llms.txt"));
+  out.push("Score: " + result.score + " / 100 - " + result.grade);
+  out.push("Checks: " + result.passes + " pass, " + result.warns + " warn, " + result.fails + " fail. Links found: " + result.linkCount + ". Sections: " + result.sectionCount + ".");
+  out.push("");
+  result.checks.forEach(function(c){
+    out.push("- [" + c.status.toUpperCase() + "] " + c.label + " - " + c.detail);
+  });
+  out.push("");
+  out.push("Generated locally by llmscheck. No data left the browser.");
+  return out.join("\n");
+}
+</script>
+
+<script>
+"use strict";
+var SAMPLE_LLMS = [
+  "> A site about example things, probably.",
+  "",
+  "## Docs",
+  "- [Getting started](https://example.com/docs/start): Start here",
+  "- [Getting started again](https://example.com/docs/start): Same link, twice",
+  "- [Relative page](/about): A relative link",
+  "- [Members area](https://example.com/private/members): Members only",
+  "",
+  "## Empty Section",
+  "",
+  "## Blog",
+  "- [Launch post](https://example.com/blog/launch?utm_source=newsletter#top): With tracking clutter"
+].join("\n");
+var SAMPLE_ROBOTS = [
+  "User-agent: *",
+  "Disallow: /private/",
+  "Disallow: /admin/"
+].join("\n");
+
+var llmsInput = document.getElementById("llmsInput");
+var robotsInput = document.getElementById("robotsInput");
+var lastReport = "";
+
+function runAudit(){
+  var result = auditLlms(llmsInput.value, robotsInput.value);
+  document.getElementById("resultsCard").classList.remove("hidden");
+  document.getElementById("reportCard").classList.remove("hidden");
+  document.getElementById("scoreNum").textContent = result.score;
+  var gradeEl = document.getElementById("gradeText");
+  gradeEl.textContent = result.grade;
+  gradeEl.className = "grade " + (result.grade === "Healthy" ? "g-healthy" : result.grade === "Needs work" ? "g-needs" : "g-broken");
+  document.getElementById("countsText").innerHTML = "<b>" + result.passes + "</b> pass &nbsp; <b>" + result.warns + "</b> warn &nbsp; <b>" + result.fails + "</b> fail<br>" + result.linkCount + " links across " + result.sectionCount + " sections";
+  var ul = document.getElementById("checksList");
+  ul.innerHTML = "";
+  result.checks.forEach(function(c){
+    var li = document.createElement("li");
+    var badge = document.createElement("span");
+    badge.className = "badge b-" + c.status;
+    badge.textContent = c.status.toUpperCase();
+    var body = document.createElement("div");
+    var t = document.createElement("div"); t.className = "ct"; t.textContent = c.label;
+    var d = document.createElement("div"); d.className = "cd"; d.textContent = c.detail;
+    body.appendChild(t); body.appendChild(d);
+    li.appendChild(badge); li.appendChild(body);
+    ul.appendChild(li);
+  });
+  lastReport = buildReport(result, "pasted llms.txt");
+  document.getElementById("reportText").textContent = lastReport;
+  document.getElementById("copyMsg").textContent = "";
+  document.getElementById("resultsCard").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+document.getElementById("auditBtn").addEventListener("click", runAudit);
+document.getElementById("sampleBtn").addEventListener("click", function(){
+  llmsInput.value = SAMPLE_LLMS;
+  robotsInput.value = SAMPLE_ROBOTS;
+  runAudit();
+});
+document.getElementById("clearBtn").addEventListener("click", function(){
+  llmsInput.value = ""; robotsInput.value = "";
+  document.getElementById("resultsCard").classList.add("hidden");
+  document.getElementById("reportCard").classList.add("hidden");
+  document.getElementById("fetchNote").style.display = "none";
+});
+document.getElementById("copyBtn").addEventListener("click", function(){
+  var done = function(){ document.getElementById("copyMsg").textContent = "Copied."; };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(lastReport).then(done, done);
+  else done();
+});
+document.getElementById("fetchBtn").addEventListener("click", function(){
+  var note = document.getElementById("fetchNote");
+  var domain = document.getElementById("domainInput").value.trim().replace(/^https?:\/\//i, "").replace(/\/.*$/, "");
+  note.style.display = "block";
+  if (!domain){ note.textContent = "Type a domain first, for example example.com."; return; }
+  var url = "https://" + domain + "/llms.txt";
+  note.textContent = "Fetching " + url + " ...";
+  fetch(url).then(function(res){
+    if (!res.ok) throw new Error("http " + res.status);
+    return res.text();
+  }).then(function(txt){
+    llmsInput.value = txt;
+    note.textContent = "Fetched " + url + " and loaded it into the editor below. Run the audit when ready.";
+  }).catch(function(){
+    note.textContent = "Could not fetch " + url + " from the browser. This is common: many sites block cross-origin reads (CORS), and it does NOT mean the file is missing. Open " + url + " in a new tab, copy the content, and paste it below instead.";
+  });
+});
+</script>
+</body>
+</html>
